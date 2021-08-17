@@ -1,0 +1,80 @@
+##Original data
+#For mutsig, results from Terra (Mutation_MutSig2CV_hg19,Snapshot:9)
+#mutsig_cll
+#mutsig_melanoma
+
+#for dndscv, ran on R.
+cll_maf <- read.delim("/Users/guangchen/cll_wes_maf.txt", header = TRUE)
+dnds_cll = dndscv(cll_maf)
+
+sel_cv_cll = dnds_cll$sel_cv
+print(head(sel_cv_cll), digits = 3)
+
+signif_genes_cll = sel_cv_cll[sel_cv_cll$qglobal_cv<0.1, c("gene_name","qglobal_cv")]
+rownames(signif_genes_cll) = NULL
+
+melenoma_maf <- read.csv("/Users/guangchen/melenoma_maf.csv", header = TRUE)
+dnds_mela = dndscv(melenoma_maf)
+
+sel_cv_mela = dnds_mela$sel_cv
+print(head(sel_cv_mela), digits = 3)
+
+signif_genes_mela = sel_cv_mela[sel_cv_mela$qglobal_cv<0.1, c("gene_name","qglobal_cv")]
+rownames(signif_genes_mela) = NULL
+
+
+#because there are q value of 0 in dnds, we add 0.0001 for each q value, so that log is fine.
+sel_cv_cll$qglobal_cv <- sel_cv_cll$qglobal_cv+0.0001
+sel_cv_mela$qglobal_cv <- sel_cv_mela$qglobal_cv+0.0001
+
+sel_cv_cll$log <- log10(sel_cv_cll$qglobal_cv)*(-1)
+sel_cv_mela$log <- log10(sel_cv_mela$qglobal_cv)*(-1)
+
+#dplyr:select to select the col we use
+Mutsig_cll <- select(mutsig_cll,gene,log)
+Dnds_cll <- select(sel_cv_cll, gene_name,log)
+
+Mutsig_melanoma <- select(mutsig_melanoma,gene,log)
+Dnds_melanoma <- select(sel_cv_mela, gene_name,log)
+
+Dnda_cll_gene <- rename(Dnds_cll, "gene"="gene_name")
+Dnda_melanoma_gene <- rename(Dnds_melanoma, "gene"="gene_name")
+
+##qq plot
+qqnorm(mutsig_cll$q,pch=1, frame=FALSE)
+qqline(mutsig_cll$q,col="steelblue",lwd=2)
+qqPlot(mutsig_cll$q)
+
+qqnorm(mutsig_cll$log,pch=1, frame=FALSE)
+qqline(mutsig_cll$log,col="steelblue",lwd=2)
+
+qqnorm(sel_cv_cll$qglobal_cv,pch=1, frame=FALSE)
+qqline(sel_cv_cll$qglobal_cv,col="steelblue",lwd=2)
+
+qqnorm(mutsig_melanoma$q,frame=FALSE)
+qqline(mutsig_melanoma$q,col="steelblue",lwd=2)
+
+qqnorm(sel_cv_mela$qglobal_cv, frame=FALSE)
+qqline(sel_cv_mela$qglobal_cv,col="steelblue",lwd=2)
+
+#dplyr:join to combine the mutsig and dnds according to gene name.
+join_cll <- left_join(Mutsig_cll, Dnda_cll_gene, by="gene")
+join_cll$log.x <- as.numeric(join_cll$log.x)
+join_cll$log.y <- as.numeric(join_cll$log.y)
+join_cll_diff <- filter(join_cll, log.x>1 | log.y>1)
+
+join_melanoma <- left_join(Mutsig_melanoma, Dnda_melanoma_gene, by="gene")
+join_melanoma$log.x <- as.numeric(join_melanoma$log.x)
+join_melanoma$log.y <- as.numeric(join_melanoma$log.y)
+join_melanoma_diff <- filter(join_melanoma, log.x>1 | log.y>1)
+
+
+##ggplot2 to draw the scatter plot
+library(ggrepel)
+p <- ggplot(join_cll_diff, aes(x=log.x, y=log.y, label=gene)) + geom_point(size=0.5) + geom_text(angle=45, check_overlap=F, size=1.5, hjust=1,vjust=1,nudge_x=0.1) + labs(x="Mutsig-log10q") + labs(y="dnds-log10q") + geom_hline(yintercept=1, linetype="dotted", color="red", size=1) + geom_vline(xintercept=1, linetype="dotted", color="red", size=1)+ geom_abline(intercept = 0, slope = 1,linetype="dotted",color="green",size=1)+ggtitle("Scatterplot of mutsig_dnds_cll")
+p + geom_text_repel(aes(log.x,log.y,label=gene))
+
+
+p <- ggplot(join_melanoma_diff, aes(x=log.x, y=log.y, label=gene)) + geom_point(size=0.5) + geom_text(angle=45, check_overlap=F, size=1.5, hjust=1,vjust=1,nudge_x=0.1) + labs(x="Mutsig-log10q") + labs(y="dnds-log10q") + geom_hline(yintercept=1, linetype="dotted", color="red", size=1) + geom_vline(xintercept=1, linetype="dotted", color="red", size=1)+ geom_abline(intercept = 0, slope = 1,linetype="dotted",color="green",size=1)+ggtitle("Scatterplot of mutsig_dnds_melanoma")
+p + geom_text_repel(aes(log.x,log.y,label=gene))
+
