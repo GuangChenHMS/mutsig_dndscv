@@ -1,0 +1,357 @@
+##Original data
+#For mutsig, results from Terra (Mutation_MutSig2CV_hg19,Snapshot:9)
+#mutsig_cll
+#mutsig_melanoma
+mutsig_cll <- read.delim("/Users/guangchen/sig_genes_cll.txt", header = TRUE)
+
+#for dndscv, ran on R.
+cll_maf <- read.delim("/Users/guangchen/cll_wes_maf.txt", header = TRUE)
+dnds_cll = dndscv(cll_maf)
+
+sel_cv_cll = dnds_cll$sel_cv
+print(head(sel_cv_cll), digits = 3)
+
+signif_genes_cll = sel_cv_cll[sel_cv_cll$qglobal_cv<0.1, c("gene_name","qglobal_cv")]
+rownames(signif_genes_cll) = NULL
+
+
+#because there are q value of 0 in dnds, we add 0.0001 for each q value, so that log is fine.
+sel_cv_cll$qglobal_cv <- sel_cv_cll$qglobal_cv+0.0001
+
+sel_cv_cll$log <- log10(sel_cv_cll$qglobal_cv)*(-1)
+
+#dplyr:select to select the col we use
+Mutsig_cll <- select(mutsig_cll,gene,log)
+Dnds_cll <- select(sel_cv_cll, gene_name,log)
+
+
+Dnda_cll_gene <- rename(Dnds_cll, "gene"="gene_name")
+
+```{r}
+##qq plot
+exp.pvalues_mut_cll<-(rank(mutsig_cll$p, ties.method="first")+.5)/(length(mutsig_cll$p)+1)
+plot(-log10(exp.pvalues_mut_cll), -log10(mutsig_cll$p), asp=1)
+abline(0,1)
+lambda_mut_cll <- median(mutsig_cll$p)/median(exp.pvalues_mut_cll)
+lambda_mut_cll
+
+exp.pvalues_dnds_cll<-(rank(sel_cv_cll$pglobal_cv, ties.method="first")+.5)/(length(sel_cv_cll$pglobal_cv)+1)
+plot(-log10(exp.pvalues_dnds_cll), -log10(sel_cv_cll$pglobal_cv), asp=1)
+abline(0,1)
+lambda_dnds_cll <- median(sel_cv_cll$pglobal_cv)/median(exp.pvalues_dnds_cll)
+lambda_dnds_cll
+
+exp.pvalues_mut_melanoma<-(rank(mutsig_melanoma$p, ties.method="first")+.5)/(length(mutsig_melanoma$p)+1)
+plot(-log10(exp.pvalues_mut_melanoma), -log10(mutsig_melanoma$p), asp=1)
+abline(0,1)
+lambda_mut_melanoma <- median(mutsig_melanoma$p)/median(exp.pvalues_mut_melanoma)
+lambda_mut_melanoma
+
+exp.pvalues_dnds_melanoma<-(rank(sel_cv_mela$pglobal_cv, ties.method="first")+.5)/(length(sel_cv_mela$pglobal_cv)+1)
+plot(-log10(exp.pvalues_dnds_melanoma), -log10(sel_cv_mela$pglobal_cv), asp=1)
+abline(0,1)
+lambda_dnds_melanoma <- median(sel_cv_mela$pglobal_cv)/median(exp.pvalues_dnds_melanoma)
+lambda_dnds_melanoma
+```
+
+#dplyr:join to combine the mutsig and dnds according to gene name.
+join_cll <- left_join(Mutsig_cll, Dnda_cll_gene, by="gene")
+join_cll$log.x <- as.numeric(join_cll$log.x)
+join_cll$log.y <- as.numeric(join_cll$log.y)
+join_cll_diff <- filter(join_cll, log.x>1 | log.y>1)
+
+join_melanoma <- left_join(Mutsig_melanoma, Dnda_melanoma_gene, by="gene")
+join_melanoma$log.x <- as.numeric(join_melanoma$log.x)
+join_melanoma$log.y <- as.numeric(join_melanoma$log.y)
+join_melanoma_diff <- filter(join_melanoma, log.x>1 | log.y>1)
+
+```{r}
+##ggplot2 to draw the scatter plot
+library(ggrepel)
+p <- ggplot(join_cll_diff, aes(x=log.x, y=log.y, label=gene)) + geom_point(size=0.5) + geom_text(angle=45, check_overlap=F, size=1.5, hjust=1,vjust=1,nudge_x=0.1) + labs(x="Mutsig-log10q") + labs(y="dnds-log10q") + geom_hline(yintercept=1, linetype="dotted", color="red", size=1) + geom_vline(xintercept=1, linetype="dotted", color="red", size=1)+ geom_abline(intercept = 0, slope = 1,linetype="dotted",color="green",size=1)+ggtitle("Scatterplot of mutsig_dnds_cll")
+p + geom_text_repel(aes(log.x,log.y,label=gene))
+
+
+p <- ggplot(join_melanoma_diff, aes(x=log.x, y=log.y, label=gene)) + geom_point(size=0.5) + geom_text(angle=45, check_overlap=F, size=1.5, hjust=1,vjust=1,nudge_x=0.1) + labs(x="Mutsig-log10q") + labs(y="dnds-log10q") + geom_hline(yintercept=1, linetype="dotted", color="red", size=1) + geom_vline(xintercept=1, linetype="dotted", color="red", size=1)+ geom_abline(intercept = 0, slope = 1,linetype="dotted",color="green",size=1)+ggtitle("Scatterplot of mutsig_dnds_melanoma")
+p + geom_text_repel(aes(log.x,log.y,label=gene))
+```
+
+##pick up the genes in the lower right region with mutsig positive & dnds negative
+melanoma_both_pos <- filter(join_melanoma, log.x >1 & log.y>1)
+
+cll_both_pos <- filter(join_cll, log.x>1 & log.y>1)
+
+melanoma_mutsig_pos <- filter(join_melanoma, log.x>1 & log.y<1)
+
+cll_mutsig_pos <- filter(join_cll, log.x>1 & log.y<1)
+
+melanoma_dnds_pos <- filter(join_melanoma, log.x<1 & log.y>1)
+
+cll_dnds_pos <- filter(join_cll, log.x<1 & log.y>1)
+
+
+#cll both positive, 
+library(overlap)
+over_both <- intersect(cll_both_pos$gene,cosmic_genes_somatic$Gene.Symbol)
+over_mutonly <- intersect(cll_mutsig_pos$gene,cosmic_genes_somatic$Gene.Symbol)
+
+a <- length(over_both)
+b <- length(cll_both_pos$gene)-length(over_both)
+c <- length(over_mutonly)
+d <- length(cll_mutsig_pos$gene)-length(over_mutonly)
+
+M1 <- matrix(c(a,b,c,d), ncol=2)
+M1
+fisher.test(M1,simulate.p.value = TRUE, B=1000)
+
+#make sure that the category, seperate p, and q value are correct.
+#write.table(x=class_join_cll,file="class_join_cll.txt",sep="\t")
+#class_join_cll1 <- read.csv("/Users/guangchen/class_join_cll.csv",header=TRUE)
+
+class_mutsig_cll <- select(mutsig_cll, gene,pCV,pCL,pFN,p,q)
+class_dnds_cll <- select(sel_cv_cll, gene_name,pmis_cv, ptrunc_cv, pallsubs_cv,pind_cv,pglobal_cv, qglobal_cv)
+class_dnds_cll <- rename(class_dnds_cll, gene =  gene_name)
+class_join_cll <- left_join(class_mutsig_cll, class_dnds_cll, by="gene")
+
+class_join_cll$qglobal_cv <- as.numeric(class_join_cll$qglobal_cv)
+class_join_cll$pglobal_cv <- as.numeric(class_join_cll$pglobal_cv)
+class_join_cll1 <- class_join_cll
+class_join_cll1$class[class_join_cll1$q>=0.1 & class_join_cll1$qglobal_cv>=0.1 ] <- 1
+class_join_cll1$class[class_join_cll1$q>0.1 & class_join_cll1$qglobal_cv<0.1 ] <- 2
+class_join_cll1$class[class_join_cll1$q<0.1 & class_join_cll1$qglobal_cv>0.1 ] <- 3
+class_join_cll1$class[class_join_cll1$q<0.1 & class_join_cll1$qglobal_cv<0.1 ] <- 4
+
+table(class_join_cll1$class)
+class_join_cll2 <- filter(class_join_cll1, class_join_cll1$class != 1)
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pCV))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pCL))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pFN))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = p))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pmis_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = ptrunc_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pglobal_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_cll1, aes(x = pind_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+
+
+
+ pCV,pCL,pFN,p,q
+ pmis_cv, ptrunc_cv, pallsubs_cv,pind_cv,qglobal_cv
+
+```{r}
+#pairplot to see association / co-linear
+
+pairs(~pCV+pCL+pFN+pmis_cv+ptrunc_cv+pind_cv, data = class_join_cll2, col="blue",  main="pairplot")
+
+```
+
+
+
+
+#multinomial logistic regression (take p as log, rank, z score)
+
+```{r}
+require(foreign)
+require(nnet)
+require(reshape2)
+require(ggplot2)
+test <- multinom(class ~ pCV + pCL + pFN + pmis_cv + ptrunc_cv + pind_cv, data=class_join_cll1)
+summary(test)
+z <- summary(test)$coefficients/summary(test)$standard.errors
+z
+p <- (1 - pnorm(abs(z),0,1))*2
+p
+```
+
+
+test_log <- multinom(class ~ log10(pcv) + log10(pcl) + log10(pfn) + log10(pmis_cv) + log10(ptrunc_cv) + log10(pind_cv), data=class_join_cll1)
+
+
+class_join_cll1$zcv = (qchisq(class_join_cll1$pcv, lower.tail=F, df=1))^0.5
+class_join_cll1$zcl = (qchisq(class_join_cll1$pcl, lower.tail=F, df=1))^0.5
+class_join_cll1$zfn = (qchisq(class_join_cll1$pfn, lower.tail=F, df=1))^0.5
+class_join_cll1$zmis_cv = (qchisq(class_join_cll1$pmis_cv, lower.tail=F, df=1))^0.5
+class_join_cll1$ztrunc_cv = (qchisq(class_join_cll1$ptrunc_cv, lower.tail=F, df=1))^0.5
+class_join_cll1$zind_cv = (qchisq(class_join_cll1$pind_cv, lower.tail=F, df=1))^0.5
+
+test_zscore <- multinom(class ~ zcv + zcl + zfn + zmis_cv + ztrunc_cv + zind_cv, data=class_join_cll1)
+summary(test_zscore)
+z_zscore <- summary(test_zscore)$coefficients/summary(test_zscore)$standard.errors
+z_zscore
+p_zscore <- (1 - pnorm(abs(z),0,1))*2
+p_zscore
+
+#KS test for gsea--whether two distributions are similar or different.
+
+
+```{r}
+ks.test(class_join_cll1$pCV,class_join_cll1$p)
+ks.test(class_join_cll1$pCL,class_join_cll1$p)
+ks.test(class_join_cll1$pFN,class_join_cll1$p)
+ks.test(class_join_cll1$pmis_cv,class_join_cll1$pglobal_cv)
+ks.test(class_join_cll1$ptrunc_cv,class_join_cll1$pglobal_cv)
+ks.test(class_join_cll1$pind_cv,class_join_cll1$pglobal_cv)
+```
+
+
+
+
+```{melanoma}
+class_mutsig_melanoma <- select(mutsig_melanoma, gene,pCV,pCL,pFN,p,q)
+class_dnds_melanoma <- select(sel_cv_mela, gene_name,pmis_cv, ptrunc_cv, pallsubs_cv,pind_cv,pglobal_cv, qglobal_cv)
+class_dnds_melanoma <- rename(class_dnds_melanoma, gene =  gene_name)
+class_join_melanoma <- left_join(class_mutsig_melanoma, class_dnds_melanoma, by="gene")
+
+class_join_melanoma$qglobal_cv <- as.numeric(class_join_melanoma$qglobal_cv)
+class_join_melanoma$pglobal_cv <- as.numeric(class_join_melanoma$pglobal_cv)
+class_join_melanoma1 <- class_join_melanoma
+class_join_melanoma1$class[class_join_melanoma1$q>=0.1 & class_join_melanoma1$qglobal_cv>=0.1 ] <- 1
+class_join_melanoma1$class[class_join_melanoma1$q>0.1 & class_join_melanoma1$qglobal_cv<0.1 ] <- 2
+class_join_melanoma1$class[class_join_melanoma1$q<0.1 & class_join_melanoma1$qglobal_cv>0.1 ] <- 3
+class_join_melanoma1$class[class_join_melanoma1$q<0.1 & class_join_melanoma1$qglobal_cv<0.1 ] <- 4
+
+table(class_join_melanoma1$class)
+class_join_melanoma2 <- filter(class_join_melanoma1, class_join_melanoma1$class != 1)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pCV))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pCL))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pFN))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = p))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pmis_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = ptrunc_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pglobal_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+library(ggplot2)
+ggplot(class_join_melanoma1, aes(x = pind_cv))+
+   geom_histogram(fill="white", colour="black")+
+   facet_grid(class~ .)
+```
+
+```{r}
+#pairplot to see association / co-linear
+
+pairs(~pCV+pCL+pFN+pmis_cv+ptrunc_cv+pind_cv, data = class_join_melanoma2, col="blue",  main="pairplot")
+
+```
+
+```{r}
+require(foreign)
+require(nnet)
+require(reshape2)
+require(ggplot2)
+test <- multinom(class ~ pCV + pCL + pFN + pmis_cv + ptrunc_cv + pind_cv, data=class_join_melanoma1)
+summary(test)
+z <- summary(test)$coefficients/summary(test)$standard.errors
+z
+p <- (1 - pnorm(abs(z),0,1))*2
+p
+```
+
+
+```{r}
+ks.test(class_join_melanoma1$pCV,class_join_melanoma1$p)
+ks.test(class_join_melanoma1$pCL,class_join_melanoma1$p)
+ks.test(class_join_melanoma1$pFN,class_join_melanoma1$p)
+ks.test(class_join_melanoma1$pmis_cv,class_join_melanoma1$pglobal_cv)
+ks.test(class_join_melanoma1$ptrunc_cv,class_join_melanoma1$pglobal_cv)
+ks.test(class_join_melanoma1$pind_cv,class_join_melanoma1$pglobal_cv)
+```
+
+
+
+
+
+
+
